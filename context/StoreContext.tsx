@@ -1,0 +1,369 @@
+
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Category, Supplier, Product, Order, User, CartItem, OrderItem, Role } from '../types';
+import { uid } from '../utils';
+
+interface StoreContextType {
+  categories: Category[];
+  suppliers: Supplier[];
+  products: Product[];
+  orders: Order[];
+  users: User[];
+  currentUser: User | null;
+  cart: CartItem[];
+  loading: boolean;
+  
+  login: (identifier: string, password?: string) => Promise<void>;
+  register: (name: string, email: string, role: Role, extras?: Partial<User>) => Promise<void>;
+  logout: () => void;
+  
+  addCategory: (name: string) => Promise<void>;
+  updateCategory: (id: string, name: string) => Promise<void>;
+  
+  registerSupplier: (name: string) => Promise<Supplier>;
+  toggleSupplierStatus: (id: string) => Promise<void>;
+  
+  verifyUser: (userId: string, status: boolean) => Promise<void>;
+  
+  addProduct: (product: Omit<Product, 'id'>) => Promise<void>;
+  updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  
+  addToCart: (product: Product, qty: number) => void;
+  removeFromCart: (productId: string) => void;
+  updateCartQty: (productId: string, qty: number) => void;
+  clearCart: () => void;
+  
+  placeOrder: (paymentMethod: 'cod' | 'card') => Promise<Order>;
+  markOrderDelivered: (orderId: string) => Promise<void>;
+}
+
+const StoreContext = createContext<StoreContextType | undefined>(undefined);
+
+export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('bs:user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [cart, setCart] = useState<CartItem[]>(() => JSON.parse(localStorage.getItem('bs:cart') || '[]'));
+  const [loading, setLoading] = useState(true);
+
+  // Initial Fetch
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [catsRes, supsRes, prodsRes, usersRes, ordersRes] = await Promise.all([
+          fetch('/api/categories'),
+          fetch('/api/suppliers'),
+          fetch('/api/products'),
+          fetch('/api/users'),
+          fetch('/api/orders')
+        ]);
+
+        const [cats, sups, prods, usrs, ords] = await Promise.all([
+          catsRes.json(),
+          supsRes.json(),
+          prodsRes.json(),
+          usersRes.json(),
+          ordersRes.json()
+        ]);
+
+        setCategories(cats);
+        setSuppliers(sups);
+        setProducts(prods);
+        setUsers(usrs);
+        setOrders(ords);
+      } catch (err) {
+        console.error("Error fetching data", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  useEffect(() => { 
+    if (currentUser) localStorage.setItem('bs:user', JSON.stringify(currentUser));
+    else localStorage.removeItem('bs:user');
+  }, [currentUser]);
+  
+  useEffect(() => { localStorage.setItem('bs:cart', JSON.stringify(cart)); }, [cart]);
+
+  const login = async (identifier: string, password?: string) => {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password })
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Login failed");
+    }
+
+    const user = await res.json();
+    setCurrentUser(user);
+  };
+
+  const register = async (name: string, email: string, role: Role, extras?: Partial<User>) => {
+    const id = uid();
+    const registrationDate = new Date().toISOString();
+    let supplierId = extras?.supplierId;
+    let finalRole = role;
+    let finalName = name;
+
+    if (role === 'supplier' || role === 'supplier-admin') {
+        const newSupplier = await registerSupplier(extras?.businessName || name);
+        finalRole = 'supplier-admin';
+        supplierId = newSupplier.id;
+        finalName = extras?.businessName || name;
+    }
+
+    const newUser = { 
+      id, 
+      name: finalName, 
+      email,
+      role: finalRole, 
+      verified: false,
+      registrationDate,
+      supplierId,
+      ...extras 
+    };
+
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newUser)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Registration failed");
+    }
+
+    setUsers(prev => [...prev, newUser]);
+    setCurrentUser(newUser);
+  };
+
+  const logout = () => {
+    setCurrentUser(null);
+    setCart([]);
+  };
+
+  const verifyUser = async (userId: string, status: boolean) => {
+    const res = await fetch(`/api/users/${userId}/verify`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verified: status })
+    });
+
+    if (res.ok) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, verified: status } : u));
+      if (currentUser?.id === userId) {
+        setCurrentUser(prev => prev ? { ...prev, verified: status } : null);
+      }
+    }
+  };
+
+  const addCategory = async (name: string) => {
+    const id = uid();
+    const res = await fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name })
+    });
+
+    if (res.ok) {
+      setCategories(prev => [...prev, { id, name }]);
+    }
+  };
+
+  const updateCategory = async (id: string, name: string) => {
+    const res = await fetch(`/api/categories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+
+    if (res.ok) {
+      setCategories(prev => prev.map(c => c.id === id ? { ...c, name } : c));
+    }
+  };
+
+  const registerSupplier = async (name: string) => {
+    const id = uid();
+    const joinedAt = new Date().toISOString();
+    const newSupplier: Supplier = { id, name, active: true, joinedAt };
+    
+    const res = await fetch('/api/suppliers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSupplier)
+    });
+
+    if (!res.ok) throw new Error("Failed to register supplier");
+
+    setSuppliers(prev => [...prev, newSupplier]);
+    return newSupplier;
+  };
+
+  const toggleSupplierStatus = async (id: string) => {
+    const supplier = suppliers.find(s => s.id === id);
+    if (!supplier) return;
+
+    const res = await fetch(`/api/suppliers/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !supplier.active })
+    });
+
+    if (res.ok) {
+      setSuppliers(prev => prev.map(s => s.id === id ? { ...s, active: !s.active } : s));
+    }
+  };
+
+  const addProduct = async (productData: Omit<Product, 'id'>) => {
+    const id = uid();
+    const res = await fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...productData, id })
+    });
+
+    if (res.ok) {
+      setProducts(prev => [...prev, { ...productData, id }]);
+    }
+  };
+
+  const updateProduct = async (id: string, updates: Partial<Product>) => {
+    const res = await fetch(`/api/products/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+
+    if (res.ok) {
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    const res = await fetch(`/api/products/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (res.ok) {
+      setProducts(prev => prev.filter(p => p.id !== id));
+    }
+  };
+
+  const addToCart = (product: Product, qty: number) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product.id === product.id);
+      if (existing) {
+        return prev.map(item => item.product.id === product.id ? { ...item, qty: item.qty + qty } : item);
+      }
+      return [...prev, { product, qty }];
+    });
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart(prev => prev.filter(item => item.product.id !== productId));
+  };
+
+  const updateCartQty = (productId: string, qty: number) => {
+    if (qty <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    setCart(prev => prev.map(item => item.product.id === productId ? { ...item, qty } : item));
+  };
+
+  const clearCart = () => setCart([]);
+
+  const placeOrder = async (paymentMethod: 'cod' | 'card') => {
+    if (!currentUser || cart.length === 0) throw new Error("Cannot place order");
+
+    const subtotal = cart.reduce((acc, item) => acc + (item.product.price * item.qty), 0);
+    const deliveryFee = subtotal > 1000 ? 0 : 50; 
+    const total = subtotal + deliveryFee;
+
+    const orderItems: OrderItem[] = cart.map(c => ({
+      productId: c.product.id,
+      productName: c.product.name,
+      price: c.product.price,
+      qty: c.qty,
+      supplierId: c.product.supplierId
+    }));
+
+    const newOrder: Order = {
+      id: `ORD-${uid().toUpperCase()}`,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      items: orderItems,
+      subtotal,
+      deliveryFee,
+      total,
+      paymentMethod,
+      status: 'placed',
+      createdAt: new Date().toISOString()
+    };
+
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newOrder)
+    });
+
+    if (res.ok) {
+      setOrders(prev => [newOrder, ...prev]);
+      clearCart();
+      return newOrder;
+    } else {
+      throw new Error("Failed to place order");
+    }
+  };
+
+  const markOrderDelivered = async (orderId: string) => {
+    const res = await fetch(`/api/orders/${orderId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'delivered' })
+    });
+
+    if (res.ok) {
+      setOrders(prev => prev.map(o => o.id === orderId ? { 
+        ...o, 
+        status: 'delivered', 
+        deliveredAt: new Date().toISOString(),
+        deliveredBy: currentUser?.name || 'Unknown Driver'
+      } : o));
+    }
+  };
+
+  return (
+    <StoreContext.Provider value={{
+      categories, suppliers, products, orders, users, currentUser, cart, loading,
+      login, register, logout,
+      addCategory, updateCategory,
+      registerSupplier, toggleSupplierStatus, verifyUser,
+      addProduct, updateProduct, deleteProduct,
+      addToCart, removeFromCart, updateCartQty, clearCart,
+      placeOrder, markOrderDelivered
+    }}>
+      {children}
+    </StoreContext.Provider>
+  );
+};
+
+export const useStore = () => {
+  const context = useContext(StoreContext);
+  if (!context) throw new Error("useStore must be used within a StoreProvider");
+  return context;
+};
