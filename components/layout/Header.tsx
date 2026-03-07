@@ -31,16 +31,22 @@ export const Header = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="text-right hidden sm:block">
-            <div className="text-sm font-semibold text-slate-900">
-              {currentUser.name}
+          <div
+            className="hidden sm:flex items-center gap-3 cursor-pointer hover:bg-slate-100 rounded-md px-2 py-1 transition"
+            onClick={() => navigate("/profile")}
+          >
+            <div className="text-right">
+              <div className="text-sm font-semibold text-slate-900">
+                {currentUser.name}
+              </div>
+              <div className="text-xs text-slate-500">
+                {roleLabels[currentUser.role]}
+              </div>
             </div>
-            <div className="text-xs text-slate-500">
-              {roleLabels[currentUser.role]}
+
+            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
+              <User className="w-4 h-4" />
             </div>
-          </div>
-          <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
-            <User className="w-4 h-4" />
           </div>
           <Button
             variant="ghost"

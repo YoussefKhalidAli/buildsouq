@@ -1,5 +1,9 @@
-
-export type Role = 'user' | 'supplier' | 'supplier-admin' | 'superadmin' | 'delivery';
+export type Role =
+  | "user"
+  | "supplier"
+  | "supplier-admin"
+  | "superadmin"
+  | "delivery";
 
 export interface User {
   id: string;
@@ -7,6 +11,7 @@ export interface User {
   role: Role;
   email?: string;
   phone?: string;
+  pfp?: string;
   password?: string;
   verified: boolean;
   registrationDate: string;
@@ -60,8 +65,8 @@ export interface Order {
   subtotal: number;
   deliveryFee: number;
   total: number;
-  paymentMethod: 'cod' | 'card';
-  status: 'placed' | 'delivered';
+  paymentMethod: "cod" | "card";
+  status: "placed" | "delivered";
   createdAt: string;
   deliveredAt?: string;
   deliveredBy?: string;

@@ -18,6 +18,7 @@ import { DeliveryDashboard } from "./views/Delivery/DeliveryDashboard";
 import { Header } from "./components/layout/Header";
 import { CartDrawer } from "./views/Marketplace/CartDrawer";
 import { Invoice } from "./views/Marketplace/Invoice";
+import { UserProfile } from "./views/User/userProfile";
 
 const rolePath = (role: string) => {
   switch (role) {
@@ -125,6 +126,7 @@ const AppRoutes = () => (
         <Route path="delivery" element={<DeliveryDashboard />} />
         <Route path="cart" element={<div />} />
         <Route path="invoice/:orderId" element={<InvoicePage />} />
+        <Route path="profile" element={<UserProfile />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
