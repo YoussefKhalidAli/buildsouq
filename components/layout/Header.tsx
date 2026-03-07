@@ -47,7 +47,7 @@ export const Header = () => {
             size="sm"
             onClick={() => {
               logout();
-              navigate('/login');
+              navigate("/login");
             }}
             title="Logout"
           >
