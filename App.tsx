@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Outlet, useParams } from 'react-router-dom';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Login } from './views/Login';
 import { Marketplace } from './views/Marketplace/Marketplace';
@@ -8,69 +9,116 @@ import { DeliveryDashboard } from './views/Delivery/DeliveryDashboard';
 import { Header } from './components/layout/Header';
 import { CartDrawer } from './views/Marketplace/CartDrawer';
 import { Invoice } from './views/Marketplace/Invoice';
-import { Modal } from './components/ui/Modal';
-import { Order } from './types';
 
-const AppContent = () => {
+const rolePath = (role: string) => {
+  switch (role) {
+    case 'superadmin':
+      return '/superadmin';
+    case 'supplier':
+    case 'supplier-admin':
+      return '/supplier';
+    case 'delivery':
+      return '/delivery';
+    case 'user':
+    default:
+      return '/marketplace';
+  }
+};
+
+const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const { currentUser } = useStore();
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const location = useLocation();
 
   if (!currentUser) {
-    return <Login />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  const renderView = () => {
-    switch (currentUser.role) {
-      case 'superadmin':
-        return <SuperAdminDashboard />;
-      case 'supplier-admin':
-      case 'supplier':
-        return <SupplierDashboard />;
-      case 'delivery':
-        return <DeliveryDashboard />;
-      case 'user':
-      default:
-        return <Marketplace onOpenCart={() => setIsCartOpen(true)} />;
+  return <>{children}</>;
+};
+
+const Layout = () => {
+  const { currentUser } = useStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!currentUser && location.pathname !== '/login') {
+      navigate('/login', { replace: true });
     }
-  };
+  }, [currentUser, location.pathname, navigate]);
+
+  const isCartOpen = location.pathname === '/cart';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
       <Header />
       <main className="flex-grow">
-        {renderView()}
+        <Outlet />
       </main>
 
-      {/* Shared Modals for User Role */}
-      {currentUser.role === 'user' && (
-        <>
-          <CartDrawer 
-            isOpen={isCartOpen} 
-            onClose={() => setIsCartOpen(false)} 
-            onInvoiceRequest={(order) => setInvoiceOrder(order)}
-          />
-          
-          <Modal
-            isOpen={!!invoiceOrder}
-            onClose={() => setInvoiceOrder(null)}
-            title="Invoice"
-            size="lg"
-          >
-            {invoiceOrder && <Invoice order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
-          </Modal>
-        </>
+      {currentUser?.role === 'user' && (
+        <CartDrawer
+          isOpen={isCartOpen}
+          onClose={() => navigate('/marketplace')}
+          onInvoiceRequest={(order) => navigate(`/invoice/${order.id}`)}
+        />
       )}
     </div>
   );
 };
 
-const App = () => {
-  return (
-    <StoreProvider>
-      <AppContent />
-    </StoreProvider>
-  );
+const RoleRedirect = () => {
+  const { currentUser } = useStore();
+
+  if (!currentUser) return <Navigate to="/login" replace />;
+  return <Navigate to={rolePath(currentUser.role)} replace />;
 };
+
+const MarketplacePage = () => {
+  const navigate = useNavigate();
+  return <Marketplace onOpenCart={() => navigate('/cart')} />;
+};
+
+const InvoicePage = () => {
+  const { orderId } = useParams<{ orderId: string }>();
+  const { orders, currentUser } = useStore();
+  const navigate = useNavigate();
+
+  const order = orders.find((o) => o.id === orderId);
+
+  if (!order || !currentUser) {
+    return <Navigate to="/" replace />;
+  }
+
+  const handleClose = () => navigate(rolePath(currentUser.role));
+
+  return <Invoice order={order} onClose={handleClose} />;
+};
+
+const AppRoutes = () => (
+  <BrowserRouter>
+    <Routes>
+      <Route path="/login" element={<Login initialMode="login" />} />
+      <Route path="/register" element={<Login initialMode="register" />} />
+      <Route path="/forgot" element={<Login initialMode="forgot" />} />
+      <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route index element={<RoleRedirect />} />
+        <Route path="marketplace" element={<MarketplacePage />} />
+        <Route path="superadmin" element={<SuperAdminDashboard />} />
+        <Route path="supplier" element={<SupplierDashboard />} />
+        <Route path="delivery" element={<DeliveryDashboard />} />
+        <Route path="cart" element={<div />} />
+        <Route path="invoice/:orderId" element={<InvoicePage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  </BrowserRouter>
+);
+
+const App = () => (
+  <StoreProvider>
+    <AppRoutes />
+  </StoreProvider>
+);
 
 export default App;

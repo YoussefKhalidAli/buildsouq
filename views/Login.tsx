@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { Role } from '../types';
 import { Button } from '../components/ui/Button';
@@ -24,9 +25,10 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-export const Login = () => {
+export const Login = ({ initialMode = 'login' }: { initialMode?: 'login' | 'register' | 'forgot' }) => {
   const { login, register, currentUser, logout } = useStore();
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
   const [role, setRole] = useState<Role>('user');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +75,16 @@ export const Login = () => {
     }
   };
 
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  useEffect(() => {
+    if (currentUser && currentUser.verified) {
+      navigate('/');
+    }
+  }, [currentUser, navigate]);
+
   if (currentUser && !currentUser.verified) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -84,7 +96,14 @@ export const Login = () => {
           <p className="text-slate-500 mb-8 leading-relaxed">
             Thank you for joining BuildSouq. Your account is currently being reviewed by our administration team. You will receive an email once your account is active.
           </p>
-          <Button onClick={logout} variant="outline" className="w-full">
+          <Button
+            onClick={() => {
+              logout();
+              navigate('/login');
+            }}
+            variant="outline"
+            className="w-full"
+          >
             Back to Login
           </Button>
         </div>
@@ -190,13 +209,23 @@ export const Login = () => {
           <div className="flex justify-center mb-10">
             <div className="bg-slate-100 p-1.5 rounded-2xl flex w-full max-w-[320px] shadow-inner">
               <button 
-                onClick={() => { setMode('login'); setSuccess(null); setError(null); }}
+                onClick={() => {
+                  navigate('/login');
+                  setMode('login');
+                  setSuccess(null);
+                  setError(null);
+                }}
                 className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${mode === 'login' ? 'bg-white shadow-md text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
               >
                 SIGN IN
               </button>
               <button 
-                onClick={() => { setMode('register'); setSuccess(null); setError(null); }}
+                onClick={() => {
+                  navigate('/register');
+                  setMode('register');
+                  setSuccess(null);
+                  setError(null);
+                }}
                 className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${mode === 'register' ? 'bg-white shadow-md text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
               >
                 REGISTER
@@ -360,7 +389,7 @@ export const Login = () => {
                         <div className="mt-2 text-right">
                           <button 
                             type="button"
-                            onClick={() => { setMode('forgot'); setError(null); setSuccess(null); }}
+                            onClick={() => { navigate('/forgot'); setMode('forgot'); setError(null); setSuccess(null); }}
                             className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-tighter"
                           >
                             Forgot Password?
