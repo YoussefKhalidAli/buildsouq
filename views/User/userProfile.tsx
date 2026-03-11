@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useStore } from "../../context/StoreContext";
 
 export const UserProfile = () => {
@@ -12,11 +13,14 @@ export const UserProfile = () => {
   const [email, setEmail] = useState(currentUser?.email || "");
   const [phone, setPhone] = useState(currentUser?.phone || "");
   const [pfp, setPfp] = useState(currentUser?.pfp || "");
+
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const navigate = useNavigate();
   const payments = getUserPayments();
 
   const saveProfile = async () => {
@@ -29,6 +33,7 @@ export const UserProfile = () => {
         phone,
         pfp,
       });
+
       alert("Profile updated");
     } catch (err: any) {
       setSaveError(err?.message || "Failed to save profile");
@@ -56,42 +61,31 @@ export const UserProfile = () => {
       <h1 className="text-2xl font-bold mb-6">Profile</h1>
 
       <div className="bg-white shadow rounded-lg p-6 mb-8">
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <img
-              src={pfp || "https://placehold.co/80"}
-              className="w-20 h-20 rounded-full object-cover"
-            />
+        {/* PROFILE IMAGE */}
+        <div className="flex flex-col items-center gap-4 mb-6">
+          <img
+            src={pfp || "https://placehold.co/120"}
+            className="w-28 h-28 rounded-full object-cover border"
+          />
 
-            <div className="flex-1">
-              <input
-                type="text"
-                placeholder="Profile picture URL"
-                value={pfp}
-                onChange={(e) => setPfp(e.target.value)}
-                className="border p-2 rounded w-full"
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <label className="cursor-pointer text-xs font-bold text-slate-600 hover:text-slate-800">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handlePfpUpload(file);
-                    }}
-                  />
-                  {uploading ? "Uploading…" : "Upload image"}
-                </label>
-                {uploadError && (
-                  <span className="text-xs text-red-600">{uploadError}</span>
-                )}
-              </div>
-            </div>
-          </div>
+          <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded text-sm font-medium">
+            {uploading ? "Uploading..." : "Upload profile picture"}
+
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handlePfpUpload(file);
+              }}
+            />
+          </label>
+
+          {uploadError && <p className="text-red-600 text-sm">{uploadError}</p>}
         </div>
 
+        {/* EMAIL */}
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Email</label>
 
@@ -103,6 +97,7 @@ export const UserProfile = () => {
           />
         </div>
 
+        {/* PHONE */}
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Phone</label>
 
@@ -117,15 +112,17 @@ export const UserProfile = () => {
         {saveError && (
           <div className="mb-4 text-sm text-red-600">{saveError}</div>
         )}
+
         <button
           onClick={saveProfile}
           disabled={saving}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? "Saving..." : "Save"}
         </button>
       </div>
 
+      {/* PAYMENTS */}
       <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-lg font-semibold mb-4">Payment History</h2>
 
@@ -133,15 +130,29 @@ export const UserProfile = () => {
           <p className="text-slate-500">No payments yet</p>
         )}
 
-        {payments.map((order) => (
-          <div key={order.id} className="border-b py-3 flex justify-between">
-            <span>{order.id}</span>
-
-            <span>{order.total} EGP</span>
-
-            <span className="text-sm text-slate-500">{order.status}</span>
-          </div>
-        ))}
+        {payments.map((order) => {
+          const rawDate = order.createdAt || order.date;
+          const orderDate = rawDate ? new Date(rawDate) : null;
+          return (
+            <button
+              key={order.id}
+              type="button"
+              onClick={() => navigate(`/orders/${order.id}`)}
+              className="w-full text-left border-b py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between hover:bg-slate-50 focus:outline-none"
+            >
+              <span className="font-medium">{order.id}</span>
+              <span className="text-sm text-slate-500">
+                {orderDate ? orderDate.toLocaleDateString() : "—"}
+              </span>
+              <span className="text-sm text-slate-500">
+                {order.total} EGP
+              </span>
+              <span className="text-sm text-slate-500 capitalize">
+                {order.status}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

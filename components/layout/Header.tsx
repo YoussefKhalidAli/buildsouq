@@ -25,9 +25,12 @@ export const Header = () => {
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
             B
           </div>
-          <span className="font-bold text-xl tracking-tight text-slate-900">
+          <a
+            href="/"
+            className="font-bold text-xl tracking-tight text-slate-900"
+          >
             BuildSouq
-          </span>
+          </a>
         </div>
 
         <div className="flex items-center gap-4">
@@ -45,7 +48,15 @@ export const Header = () => {
             </div>
 
             <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
-              <User className="w-4 h-4" />
+              {currentUser.pfp ? (
+                <img
+                  src={currentUser.pfp}
+                  alt="Profile"
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <User className="w-4 h-4" />
+              )}
             </div>
           </div>
           <Button

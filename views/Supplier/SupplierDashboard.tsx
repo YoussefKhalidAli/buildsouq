@@ -20,7 +20,8 @@ export const SupplierDashboard = () => {
     price: '',
     stock: '',
     lowStockThreshold: '10',
-    categoryId: ''
+    categoryId: '',
+    nonRefundable: false,
   });
 
   const handleEdit = (product: Product) => {
@@ -31,7 +32,8 @@ export const SupplierDashboard = () => {
       price: product.price.toString(),
       stock: product.stock.toString(),
       lowStockThreshold: (product.lowStockThreshold || 10).toString(),
-      categoryId: product.categoryId
+      categoryId: product.categoryId,
+      nonRefundable: product.nonRefundable || false,
     });
     setIsModalOpen(true);
   };
@@ -44,7 +46,8 @@ export const SupplierDashboard = () => {
       price: '',
       stock: '',
       lowStockThreshold: '10',
-      categoryId: categories[0]?.id || ''
+      categoryId: categories[0]?.id || '',
+      nonRefundable: false,
     });
     setIsModalOpen(true);
   };
@@ -60,7 +63,8 @@ export const SupplierDashboard = () => {
       stock: parseInt(formData.stock),
       lowStockThreshold: parseInt(formData.lowStockThreshold),
       categoryId: formData.categoryId,
-      supplierId: supplierId
+      supplierId: supplierId,
+      nonRefundable: formData.nonRefundable,
     };
 
     if (editingProduct) {
@@ -236,6 +240,19 @@ export const SupplierDashboard = () => {
               value={formData.description}
               onChange={e => setFormData({...formData, description: e.target.value})}
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="nonRefundable"
+              type="checkbox"
+              checked={formData.nonRefundable}
+              onChange={(e) => setFormData({ ...formData, nonRefundable: e.target.checked })}
+              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+            />
+            <label htmlFor="nonRefundable" className="text-sm text-slate-700">
+              Mark this product as non-refundable
+            </label>
           </div>
 
           <div className="pt-4 flex justify-end gap-3">

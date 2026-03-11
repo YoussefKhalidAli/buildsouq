@@ -139,8 +139,22 @@ async function createTables() {
     categoryId VARCHAR(128),
     stock INTEGER,
     lowStockThreshold INTEGER,
-    description TEXT
+    description TEXT,
+    nonRefundable BOOLEAN DEFAULT 0
   )`);
+
+  // Ensure new product columns exist (migration for older DBs)
+  try {
+    if (DB_TYPE === "mysql") {
+      await db.run(
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS nonRefundable BOOLEAN DEFAULT 0",
+      );
+    } else {
+      await db.run("ALTER TABLE products ADD COLUMN nonRefundable BOOLEAN DEFAULT 0");
+    }
+  } catch (err) {
+    // column already exists or not supported; safe to ignore
+  }
 
   // Orders Table
   await db.run(`CREATE TABLE IF NOT EXISTS orders (
@@ -148,9 +162,15 @@ async function createTables() {
     userId VARCHAR(128),
     date VARCHAR(64),
     status VARCHAR(64),
+    subtotal DOUBLE,
+    deliveryFee DOUBLE,
     total DOUBLE,
     paymentMethod VARCHAR(32),
-    items TEXT
+    items TEXT,
+    deliveredAt VARCHAR(64),
+    deliveredBy VARCHAR(255),
+    refundedAt VARCHAR(64),
+    disposedAt VARCHAR(64)
   )`);
 
   // Ensure profile picture column exists (migration for older DBs)
@@ -159,6 +179,48 @@ async function createTables() {
       await db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS pfp TEXT");
     } else {
       await db.run("ALTER TABLE users ADD COLUMN pfp TEXT");
+    }
+  } catch (err) {
+    // column already exists or not supported; safe to ignore
+  }
+
+  // Ensure new order columns exist (migration for older DBs)
+  try {
+    if (DB_TYPE === "mysql") {
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS deliveredAt VARCHAR(64)",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS deliveredBy VARCHAR(255)",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS refundedAt VARCHAR(64)",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN subtotal DOUBLE",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN deliveryFee DOUBLE",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN deliveredAt VARCHAR(64)",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN deliveredBy VARCHAR(255)",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN refundedAt VARCHAR(64)",
+      );
+      await db.run(
+        "ALTER TABLE orders ADD COLUMN disposedAt VARCHAR(64)",
+      );
+    } else {
+      await db.run("ALTER TABLE orders ADD COLUMN subtotal DOUBLE");
+      await db.run("ALTER TABLE orders ADD COLUMN deliveryFee DOUBLE");
+      await db.run("ALTER TABLE orders ADD COLUMN deliveredAt VARCHAR(64)");
+      await db.run("ALTER TABLE orders ADD COLUMN deliveredBy VARCHAR(255)");
+      await db.run("ALTER TABLE orders ADD COLUMN refundedAt VARCHAR(64)");
+      await db.run("ALTER TABLE orders ADD COLUMN disposedAt VARCHAR(64)");
     }
   } catch (err) {
     // column already exists or not supported; safe to ignore
@@ -429,11 +491,12 @@ app.post("/api/products", async (req, res) => {
     stock,
     lowStockThreshold,
     description,
+    nonRefundable,
   } = req.body;
   try {
     await db.run(
-      `INSERT INTO products (id, supplierId, name, price, categoryId, stock, lowStockThreshold, description) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (id, supplierId, name, price, categoryId, stock, lowStockThreshold, description, nonRefundable) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         supplierId,
@@ -443,6 +506,7 @@ app.post("/api/products", async (req, res) => {
         stock,
         lowStockThreshold,
         description,
+        nonRefundable ? 1 : 0,
       ],
     );
     res.json({ id, name });
@@ -452,11 +516,18 @@ app.post("/api/products", async (req, res) => {
 });
 
 app.put("/api/products/:id", async (req, res) => {
-  const { name, price, categoryId, stock, lowStockThreshold, description } =
-    req.body;
+  const {
+    name,
+    price,
+    categoryId,
+    stock,
+    lowStockThreshold,
+    description,
+    nonRefundable,
+  } = req.body;
   try {
     await db.run(
-      `UPDATE products SET name = ?, price = ?, categoryId = ?, stock = ?, lowStockThreshold = ?, description = ? 
+      `UPDATE products SET name = ?, price = ?, categoryId = ?, stock = ?, lowStockThreshold = ?, description = ?, nonRefundable = ? 
           WHERE id = ?`,
       [
         name,
@@ -465,6 +536,7 @@ app.put("/api/products/:id", async (req, res) => {
         stock,
         lowStockThreshold,
         description,
+        nonRefundable ? 1 : 0,
         req.params.id,
       ],
     );
@@ -494,12 +566,32 @@ app.get("/api/orders", async (req, res) => {
 });
 
 app.post("/api/orders", async (req, res) => {
-  const { id, userId, date, status, total, paymentMethod, items } = req.body;
+  const {
+    id,
+    userId,
+    date,
+    status,
+    subtotal,
+    deliveryFee,
+    total,
+    paymentMethod,
+    items,
+  } = req.body;
   try {
     await db.run(
-      `INSERT INTO orders (id, userId, date, status, total, paymentMethod, items) 
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, userId, date, status, total, paymentMethod, JSON.stringify(items)],
+      `INSERT INTO orders (id, userId, date, status, subtotal, deliveryFee, total, paymentMethod, items) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        userId,
+        date,
+        status,
+        subtotal,
+        deliveryFee,
+        total,
+        paymentMethod,
+        JSON.stringify(items),
+      ],
     );
     res.json({ id, status });
   } catch (err: any) {
@@ -515,6 +607,60 @@ app.patch("/api/orders/:id/status", async (req, res) => {
       req.params.id,
     ]);
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch("/api/orders/:id", async (req, res) => {
+  const { status, items, deliveredAt, deliveredBy, refundedAt, disposedAt } =
+    req.body;
+  const updates: string[] = [];
+  const params: any[] = [];
+
+  if (status !== undefined) {
+    updates.push("status = ?");
+    params.push(status);
+  }
+  if (items !== undefined) {
+    updates.push("items = ?");
+    params.push(JSON.stringify(items));
+  }
+  if (deliveredAt !== undefined) {
+    updates.push("deliveredAt = ?");
+    params.push(deliveredAt);
+  }
+  if (deliveredBy !== undefined) {
+    updates.push("deliveredBy = ?");
+    params.push(deliveredBy);
+  }
+  if (refundedAt !== undefined) {
+    updates.push("refundedAt = ?");
+    params.push(refundedAt);
+  }
+  if (disposedAt !== undefined) {
+    updates.push("disposedAt = ?");
+    params.push(disposedAt);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: "No updates provided" });
+  }
+
+  params.push(req.params.id);
+  try {
+    await db.run(
+      `UPDATE orders SET ${updates.join(", ")} WHERE id = ?`,
+      params,
+    );
+
+    const updated = await db.get("SELECT * FROM orders WHERE id = ?", [
+      req.params.id,
+    ]);
+    if (updated) {
+      updated.items = JSON.parse(updated.items);
+    }
+    res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

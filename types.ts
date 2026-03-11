@@ -42,6 +42,7 @@ export interface Product {
   stock: number;
   lowStockThreshold?: number;
   imageUrl?: string;
+  nonRefundable?: boolean; // Some products cannot be refunded
 }
 
 export interface CartItem {
@@ -55,6 +56,8 @@ export interface OrderItem {
   price: number;
   qty: number;
   supplierId: string;
+  refundable?: boolean; // If false, item cannot be refunded
+  refunded?: boolean; // Marked when refund has been processed
 }
 
 export interface Order {
@@ -66,8 +69,11 @@ export interface Order {
   deliveryFee: number;
   total: number;
   paymentMethod: "cod" | "card";
-  status: "placed" | "delivered";
+  status: "placed" | "delivered" | "refunded" | "disposed";
   createdAt: string;
+  date?: string; // Legacy field from the API
   deliveredAt?: string;
   deliveredBy?: string;
+  refundedAt?: string;
+  disposedAt?: string;
 }

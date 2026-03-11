@@ -55,6 +55,13 @@ interface StoreContextType {
 
   placeOrder: (paymentMethod: "cod" | "card") => Promise<Order>;
   markOrderDelivered: (orderId: string) => Promise<void>;
+  updateOrderStatus: (
+    orderId: string,
+    status: "placed" | "delivered" | "refunded" | "disposed",
+  ) => Promise<void>;
+  refundOrderItem: (orderId: string, productId: string) => Promise<void>;
+  refundOrder: (orderId: string) => Promise<void>;
+  disposeOrder: (orderId: string) => Promise<void>;
 
   updateUserProfile: (
     updates: Partial<Pick<User, "email" | "phone" | "pfp" | "name">>,
@@ -350,12 +357,16 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
     const deliveryFee = subtotal > 1000 ? 0 : 50;
     const total = subtotal + deliveryFee;
 
+    const createdAt = new Date().toISOString();
+
     const orderItems: OrderItem[] = cart.map((c) => ({
       productId: c.product.id,
       productName: c.product.name,
       price: c.product.price,
       qty: c.qty,
       supplierId: c.product.supplierId,
+      refundable: c.product.nonRefundable ? false : true,
+      refunded: false,
     }));
 
     const newOrder: Order = {
@@ -368,7 +379,8 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
       total,
       paymentMethod,
       status: "placed",
-      createdAt: new Date().toISOString(),
+      createdAt,
+      date: createdAt,
     };
 
     const res = await fetch("/api/orders", {
@@ -386,27 +398,72 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
     }
   };
 
-  const markOrderDelivered = async (orderId: string) => {
-    const res = await fetch(`/api/orders/${orderId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "delivered" }),
-    });
+  const patchOrder = async (orderId: string, updates: Partial<Order>) => {
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)),
+    );
 
-    if (res.ok) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                status: "delivered",
-                deliveredAt: new Date().toISOString(),
-                deliveredBy: currentUser?.name || "Unknown Driver",
-              }
-            : o,
-        ),
-      );
-    }
+    return {
+      ...orders.find((o) => o.id === orderId),
+      ...updates,
+    } as Order;
+  };
+
+  const markOrderDelivered = async (orderId: string) => {
+    const deliveredAt = new Date().toISOString();
+    await patchOrder(orderId, {
+      status: "delivered",
+      deliveredAt,
+      deliveredBy: currentUser?.name || "Unknown Driver",
+    });
+  };
+
+  const updateOrderStatus = async (
+    orderId: string,
+    status: "placed" | "delivered" | "refunded" | "disposed",
+  ) => {
+    const updates: Partial<Order> = { status };
+    if (status === "refunded") updates.refundedAt = new Date().toISOString();
+    if (status === "disposed") updates.disposedAt = new Date().toISOString();
+    await patchOrder(orderId, updates);
+  };
+
+  const refundOrderItem = async (orderId: string, productId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) throw new Error("Order not found");
+
+    const updatedItems = order.items.map((item) =>
+      item.productId === productId ? { ...item, refunded: true } : item,
+    );
+
+    const allRefunded = updatedItems.every((item) =>
+      item.refundable !== false ? item.refunded : true,
+    );
+
+    await patchOrder(orderId, {
+      items: updatedItems,
+      status: allRefunded ? "refunded" : order.status,
+      refundedAt: new Date().toISOString(),
+    });
+  };
+
+  const refundOrder = async (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) throw new Error("Order not found");
+
+    const updatedItems = order.items.map((item) =>
+      item.refundable === false ? item : { ...item, refunded: true },
+    );
+
+    await patchOrder(orderId, {
+      items: updatedItems,
+      status: "refunded",
+      refundedAt: new Date().toISOString(),
+    });
+  };
+
+  const disposeOrder = async (orderId: string) => {
+    await updateOrderStatus(orderId, "disposed");
   };
 
   const updateUserProfile = async (
@@ -489,6 +546,10 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
         clearCart,
         placeOrder,
         markOrderDelivered,
+        updateOrderStatus,
+        refundOrderItem,
+        refundOrder,
+        disposeOrder,
         updateUserProfile,
         uploadUserProfilePicture,
         getUserPayments,
