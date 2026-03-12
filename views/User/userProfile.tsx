@@ -144,9 +144,7 @@ export const UserProfile = () => {
               <span className="text-sm text-slate-500">
                 {orderDate ? orderDate.toLocaleDateString() : "—"}
               </span>
-              <span className="text-sm text-slate-500">
-                {order.total} EGP
-              </span>
+              <span className="text-sm text-slate-500">{order.total} EGP</span>
               <span className="text-sm text-slate-500 capitalize">
                 {order.status}
               </span>

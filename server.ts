@@ -150,7 +150,9 @@ async function createTables() {
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS nonRefundable BOOLEAN DEFAULT 0",
       );
     } else {
-      await db.run("ALTER TABLE products ADD COLUMN nonRefundable BOOLEAN DEFAULT 0");
+      await db.run(
+        "ALTER TABLE products ADD COLUMN nonRefundable BOOLEAN DEFAULT 0",
+      );
     }
   } catch (err) {
     // column already exists or not supported; safe to ignore
@@ -196,24 +198,12 @@ async function createTables() {
       await db.run(
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS refundedAt VARCHAR(64)",
       );
-      await db.run(
-        "ALTER TABLE orders ADD COLUMN subtotal DOUBLE",
-      );
-      await db.run(
-        "ALTER TABLE orders ADD COLUMN deliveryFee DOUBLE",
-      );
-      await db.run(
-        "ALTER TABLE orders ADD COLUMN deliveredAt VARCHAR(64)",
-      );
-      await db.run(
-        "ALTER TABLE orders ADD COLUMN deliveredBy VARCHAR(255)",
-      );
-      await db.run(
-        "ALTER TABLE orders ADD COLUMN refundedAt VARCHAR(64)",
-      );
-      await db.run(
-        "ALTER TABLE orders ADD COLUMN disposedAt VARCHAR(64)",
-      );
+      await db.run("ALTER TABLE orders ADD COLUMN subtotal DOUBLE");
+      await db.run("ALTER TABLE orders ADD COLUMN deliveryFee DOUBLE");
+      await db.run("ALTER TABLE orders ADD COLUMN deliveredAt VARCHAR(64)");
+      await db.run("ALTER TABLE orders ADD COLUMN deliveredBy VARCHAR(255)");
+      await db.run("ALTER TABLE orders ADD COLUMN refundedAt VARCHAR(64)");
+      await db.run("ALTER TABLE orders ADD COLUMN disposedAt VARCHAR(64)");
     } else {
       await db.run("ALTER TABLE orders ADD COLUMN subtotal DOUBLE");
       await db.run("ALTER TABLE orders ADD COLUMN deliveryFee DOUBLE");

@@ -399,14 +399,22 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
   };
 
   const patchOrder = async (orderId: string, updates: Partial<Order>) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)),
-    );
+    const res = await fetch(`/api/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
 
-    return {
-      ...orders.find((o) => o.id === orderId),
-      ...updates,
-    } as Order;
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to update order");
+    }
+
+    const updatedOrder = await res.json();
+
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)));
+
+    return updatedOrder;
   };
 
   const markOrderDelivered = async (orderId: string) => {

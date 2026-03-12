@@ -7,13 +7,8 @@ import { Button } from "../../components/ui/Button";
 export const OrderDetails = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
-  const {
-    currentUser,
-    orders,
-    refundOrderItem,
-    refundOrder,
-    disposeOrder,
-  } = useStore();
+  const { currentUser, orders, refundOrderItem, refundOrder, disposeOrder } =
+    useStore();
 
   const order = orders.find((o) => o.id === orderId);
 
@@ -28,7 +23,9 @@ export const OrderDetails = () => {
     const days = Math.floor(
       (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24),
     );
-    return days < 15 && order.status !== "refunded" && order.status !== "disposed";
+    return (
+      days < 15 && order.status !== "refunded" && order.status !== "disposed"
+    );
   }, [order, orderDate]);
 
   const canDispose = useMemo(() => {
@@ -144,9 +141,7 @@ export const OrderDetails = () => {
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <div className="text-xs text-slate-500">Total</div>
-          <div className="mt-1 font-semibold">
-            {formatMoney(order.total)}
-          </div>
+          <div className="mt-1 font-semibold">{formatMoney(order.total)}</div>
         </div>
       </div>
 
@@ -157,7 +152,8 @@ export const OrderDetails = () => {
       {canRefund && (
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
           <p className="text-sm">
-            You can request a refund on refundable items within 15 days of purchase.
+            You can request a refund on refundable items within 15 days of
+            purchase.
           </p>
         </div>
       )}
@@ -169,7 +165,10 @@ export const OrderDetails = () => {
           const isRefunded = item.refunded;
           const refundable = item.refundable !== false;
           const showRefundButton =
-            canRefund && refundable && !isRefunded && order.status !== "refunded";
+            canRefund &&
+            refundable &&
+            !isRefunded &&
+            order.status !== "refunded";
 
           return (
             <div
@@ -190,7 +189,9 @@ export const OrderDetails = () => {
                 {isRefunded ? (
                   <span className="text-sm text-green-600">Refunded</span>
                 ) : !refundable ? (
-                  <span className="text-sm text-orange-600">Non-refundable</span>
+                  <span className="text-sm text-orange-600">
+                    Non-refundable
+                  </span>
                 ) : showRefundButton ? (
                   <Button
                     size="sm"
@@ -208,7 +209,8 @@ export const OrderDetails = () => {
 
       {canDispose && (
         <div className="mt-6 text-sm text-slate-600">
-          Since this order is older than 15 days, refund is no longer available. You can dispose of it instead.
+          Since this order is older than 15 days, refund is no longer available.
+          You can dispose of it instead.
         </div>
       )}
     </div>
