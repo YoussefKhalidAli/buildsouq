@@ -29,7 +29,7 @@ export const Login = ({
 }: {
   initialMode?: "login" | "register" | "forgot";
 }) => {
-  const { login, register, currentUser, logout } = useStore();
+  const { login, register, currentUser, logout, uploadUserDocument } = useStore();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "register" | "forgot">(
     initialMode,
@@ -48,10 +48,11 @@ export const Login = ({
 
   // Role Specific
   const [businessName, setBusinessName] = useState("");
-  const [attachments, setAttachments] = useState<Record<string, boolean>>({});
+  const [documents, setDocuments] = useState<Record<string, string>>({});
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
 
-  const handleFileSimulate = (key: string) => {
-    setAttachments((prev) => ({ ...prev, [key]: true }));
+  const handleFileSelect = (key: string, file: File) => {
+    setPendingFiles((prev) => ({ ...prev, [key]: file }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,12 +65,24 @@ export const Login = ({
         await login(email, password);
       } else if (mode === "register") {
         if (!name.trim()) return;
-        await register(name, email, role, {
+        const newUser = await register(name, email, role, {
           phone,
           password,
           businessName,
-          documents: attachments,
+          documents,
         });
+
+        // Upload any chosen files after registration
+        if (Object.keys(pendingFiles).length > 0) {
+          for (const [key, file] of Object.entries(pendingFiles)) {
+            try {
+              const url = await uploadUserDocument(newUser.id, key, file);
+              setDocuments((prev) => ({ ...prev, [key]: url }));
+            } catch (uploadErr) {
+              // ignore upload errors here; admin can request again
+            }
+          }
+        }
       } else if (mode === "forgot") {
         // Simulate password reset request
         if (!email.trim()) return;
@@ -106,6 +119,34 @@ export const Login = ({
             Thank you for joining BuildSouq. Your account is currently being
             reviewed by our administration team. You will receive an email once
             your account is active.
+          </p>
+          <Button
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+            variant="outline"
+            className="w-full"
+          >
+            Back to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentUser && currentUser.suspended) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-2xl p-12 max-w-md w-full text-center">
+          <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="w-10 h-10" />
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 mb-4">
+            Account Suspended
+          </h2>
+          <p className="text-slate-500 mb-8 leading-relaxed">
+            Your account has been suspended. Please contact support for assistance.
           </p>
           <Button
             onClick={() => {
@@ -166,43 +207,50 @@ export const Login = ({
     label: string;
     id: string;
     icon: any;
-  }) => (
-    <div className="relative group">
-      <input
-        type="file"
-        id={id}
-        className="hidden"
-        onChange={() => handleFileSimulate(id)}
-      />
-      <label
-        htmlFor={id}
-        className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all h-28 ${
-          attachments[id]
-            ? "border-green-500 bg-green-50"
-            : "border-slate-200 bg-slate-50 hover:border-blue-400 hover:bg-white shadow-inner"
-        }`}
-      >
-        {attachments[id] ? (
-          <div className="text-center animate-in zoom-in-95 duration-300">
-            <CheckCircle2 className="w-6 h-6 text-green-600 mx-auto mb-2" />
-            <span className="text-[10px] font-black text-green-700 uppercase block tracking-tighter">
-              Document Ready
-            </span>
-            <span className="text-[9px] text-green-600 opacity-70">
-              Click to change
-            </span>
-          </div>
-        ) : (
-          <>
-            <Icon className="w-6 h-6 text-slate-400 mb-2 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-bold text-slate-500 uppercase group-hover:text-blue-600 text-center px-2">
-              {label}
-            </span>
-          </>
-        )}
-      </label>
-    </div>
-  );
+  }) => {
+    const isUploaded = Boolean(documents[id] || pendingFiles[id]);
+
+    return (
+      <div className="relative group">
+        <input
+          type="file"
+          id={id}
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFileSelect(id, file);
+          }}
+        />
+        <label
+          htmlFor={id}
+          className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all h-28 ${
+            isUploaded
+              ? "border-green-500 bg-green-50"
+              : "border-slate-200 bg-slate-50 hover:border-blue-400 hover:bg-white shadow-inner"
+          }`}
+        >
+          {isUploaded ? (
+            <div className="text-center animate-in zoom-in-95 duration-300">
+              <CheckCircle2 className="w-6 h-6 text-green-600 mx-auto mb-2" />
+              <span className="text-[10px] font-black text-green-700 uppercase block tracking-tighter">
+                Document Ready
+              </span>
+              <span className="text-[9px] text-green-600 opacity-70">
+                Click to change
+              </span>
+            </div>
+          ) : (
+            <>
+              <Icon className="w-6 h-6 text-slate-400 mb-2 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase group-hover:text-blue-600 text-center px-2">
+                {label}
+              </span>
+            </>
+          )}
+        </label>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 md:p-8">
@@ -324,15 +372,58 @@ export const Login = ({
                       : "1. Account Type"}
                   </label>
                   {isAdminPortal ? (
-                    <div className="p-6 bg-red-50 border-2 border-red-200 rounded-2xl text-center">
-                      <ShieldCheck className="w-10 h-10 text-red-600 mx-auto mb-3" />
-                      <div className="text-sm font-black text-red-900 uppercase tracking-tight">
-                        Administrator Application
+                    <div className="space-y-4">
+                      <div className="p-6 bg-red-50 border-2 border-red-200 rounded-2xl text-center">
+                        <ShieldCheck className="w-10 h-10 text-red-600 mx-auto mb-3" />
+                        <div className="text-sm font-black text-red-900 uppercase tracking-tight">
+                          Administrator Application
+                        </div>
+                        <p className="text-[10px] text-red-600 font-medium mt-1">
+                          Choose your administrative role. All admin accounts require manual verification.
+                        </p>
                       </div>
-                      <p className="text-[10px] text-red-600 font-medium mt-1">
-                        This account will require manual verification by the
-                        board of directors.
-                      </p>
+
+                      <div className="space-y-3">
+                        <label
+                          className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${role === "admin" ? "border-blue-500 bg-blue-50" : "border-slate-100 bg-white"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="adminRole"
+                            className="w-5 h-5 text-blue-600 border-slate-300 focus:ring-blue-500"
+                            checked={role === "admin"}
+                            onChange={() => setRole("admin")}
+                          />
+                          <div className="ml-4">
+                            <div className="text-sm font-bold text-slate-900">
+                              Admin
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium uppercase">
+                              Customer management and basic oversight
+                            </div>
+                          </div>
+                        </label>
+
+                        <label
+                          className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${role === "logistics-super-admin" ? "border-yellow-500 bg-yellow-50" : "border-slate-100 bg-white"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="adminRole"
+                            className="w-5 h-5 text-yellow-600 border-slate-300 focus:ring-yellow-500"
+                            checked={role === "logistics-super-admin"}
+                            onChange={() => setRole("logistics-super-admin")}
+                          />
+                          <div className="ml-4">
+                            <div className="text-sm font-bold text-slate-900">
+                              Logistics Super Admin
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium uppercase">
+                              Logistics oversight and fleet management
+                            </div>
+                          </div>
+                        </label>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">

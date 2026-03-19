@@ -14,6 +14,10 @@ import { Login } from "./views/Login";
 import { Marketplace } from "./views/Marketplace/Marketplace";
 import { SupplierDashboard } from "./views/Supplier/SupplierDashboard";
 import { SuperAdminDashboard } from "./views/Admin/SuperAdminDashboard";
+import { LogisticsSuperAdminDashboard } from "./views/Admin/LogisticsSuperAdminDashboard";
+import { CustomerOrders } from "./views/Admin/CustomerOrders";
+import { AllOrders } from "./views/Admin/AllOrders";
+import { AdminUserDetails } from "./views/Admin/AdminUserDetails";
 import { DeliveryDashboard } from "./views/Delivery/DeliveryDashboard";
 import { Header } from "./components/layout/Header";
 import { CartDrawer } from "./views/Marketplace/CartDrawer";
@@ -25,6 +29,10 @@ const rolePath = (role: string) => {
   switch (role) {
     case "superadmin":
       return "/superadmin";
+    case "admin":
+      return "/admin";
+    case "logistics-super-admin":
+      return "/logistics-admin";
     case "supplier":
     case "supplier-admin":
       return "/supplier";
@@ -123,6 +131,12 @@ const AppRoutes = () => (
         <Route index element={<RoleRedirect />} />
         <Route path="marketplace" element={<MarketplacePage />} />
         <Route path="superadmin" element={<SuperAdminDashboard />} />
+        <Route path="superadmin/users/:userId/orders" element={<CustomerOrders />} />
+        <Route path="superadmin/users/:userId" element={<AdminUserDetails />} />
+        <Route path="admin" element={<SuperAdminDashboard />} />
+        <Route path="admin/users/:userId/orders" element={<CustomerOrders />} />
+        <Route path="admin/users/:userId" element={<AdminUserDetails />} />
+        <Route path="logistics-admin" element={<LogisticsSuperAdminDashboard />} />
         <Route path="supplier" element={<SupplierDashboard />} />
         <Route path="delivery" element={<DeliveryDashboard />} />
         <Route path="cart" element={<div />} />

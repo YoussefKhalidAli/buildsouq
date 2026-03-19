@@ -113,7 +113,11 @@ async function createTables() {
     phone VARCHAR(64),
     businessName VARCHAR(255),
     supplierId VARCHAR(128),
-    pfp TEXT
+    pfp TEXT,
+    documents TEXT,
+    expirationDate VARCHAR(64),
+    suspended BOOLEAN DEFAULT 0,
+    lastActive VARCHAR(64)
   )`);
 
   // Categories Table
@@ -175,12 +179,34 @@ async function createTables() {
     disposedAt VARCHAR(64)
   )`);
 
-  // Ensure profile picture column exists (migration for older DBs)
+  // Ensure user metadata columns exist (migration for older DBs)
   try {
     if (DB_TYPE === "mysql") {
       await db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS pfp TEXT");
+      await db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS documents TEXT");
+      await db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS expirationDate VARCHAR(64)");
+      await db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended BOOLEAN DEFAULT 0");
+      await db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS lastActive VARCHAR(64)");
     } else {
-      await db.run("ALTER TABLE users ADD COLUMN pfp TEXT");
+      // For SQLite, check and add columns if not exist
+      const columns = await db.all("PRAGMA table_info(users)");
+      const columnNames = columns.map((c: any) => c.name);
+      
+      if (!columnNames.includes('pfp')) {
+        await db.run("ALTER TABLE users ADD COLUMN pfp TEXT");
+      }
+      if (!columnNames.includes('documents')) {
+        await db.run("ALTER TABLE users ADD COLUMN documents TEXT");
+      }
+      if (!columnNames.includes('expirationDate')) {
+        await db.run("ALTER TABLE users ADD COLUMN expirationDate VARCHAR(64)");
+      }
+      if (!columnNames.includes('suspended')) {
+        await db.run("ALTER TABLE users ADD COLUMN suspended BOOLEAN DEFAULT 0");
+      }
+      if (!columnNames.includes('lastActive')) {
+        await db.run("ALTER TABLE users ADD COLUMN lastActive VARCHAR(64)");
+      }
     }
   } catch (err) {
     // column already exists or not supported; safe to ignore
@@ -253,6 +279,30 @@ async function createTables() {
     await db.run(
       "INSERT INTO users (id, name, email, password, role, verified, registrationDate) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [
+        "u2",
+        "Admin User",
+        "admin",
+        "123456",
+        "admin",
+        1,
+        new Date().toISOString(),
+      ],
+    );
+    await db.run(
+      "INSERT INTO users (id, name, email, password, role, verified, registrationDate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
+        "u3",
+        "Logistics Admin",
+        "logistics",
+        "123456",
+        "logistics-super-admin",
+        1,
+        new Date().toISOString(),
+      ],
+    );
+    await db.run(
+      "INSERT INTO users (id, name, email, password, role, verified, registrationDate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
         "u4",
         "islam",
         "islam",
@@ -284,7 +334,39 @@ app.post("/api/login", async (req, res) => {
     if (password && user.password && user.password !== password) {
       return res.status(401).json({ error: "Invalid password" });
     }
-    res.json(user);
+
+    const now = new Date().toISOString();
+    let suspended = user.suspended ? true : false;
+
+    // auto suspend on expiration
+    if (user.expirationDate) {
+      const exp = new Date(user.expirationDate);
+      if (!isNaN(exp.getTime()) && exp < new Date()) {
+        suspended = true;
+      }
+    }
+
+    // auto suspend on inactivity (60 days)
+    if (user.lastActive) {
+      const last = new Date(user.lastActive);
+      if (!isNaN(last.getTime())) {
+        const days = (new Date().getTime() - last.getTime()) / (1000 * 60 * 60 * 24);
+        if (days > 60) suspended = true;
+      }
+    }
+
+    await db.run(
+      "UPDATE users SET lastActive = ?, suspended = ? WHERE id = ?",
+      [now, suspended ? 1 : 0, user.id],
+    );
+
+    res.json({
+      ...user,
+      verified: !!user.verified,
+      suspended,
+      lastActive: now,
+      documents: user.documents ? JSON.parse(user.documents) : {},
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -302,11 +384,12 @@ app.post("/api/register", async (req, res) => {
     password,
     businessName,
     supplierId,
+    documents,
   } = req.body;
   try {
     await db.run(
-      `INSERT INTO users (id, name, email, role, verified, registrationDate, phone, password, businessName, supplierId) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, name, email, role, verified, registrationDate, phone, password, businessName, supplierId, documents, suspended) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         name,
@@ -318,6 +401,8 @@ app.post("/api/register", async (req, res) => {
         password,
         businessName,
         supplierId,
+        documents ? JSON.stringify(documents) : null,
+        1, // start unverified/suspended until approved
       ],
     );
     res.json({ id, name, email, role });
@@ -330,20 +415,79 @@ app.post("/api/register", async (req, res) => {
 app.get("/api/users", async (req, res) => {
   try {
     const rows = await db.all("SELECT * FROM users");
-    res.json(rows.map((u: any) => ({ ...u, verified: !!u.verified })));
+
+    const now = new Date();
+    const updatedRows = await Promise.all(
+      rows.map(async (u: any) => {
+        let suspended = !!u.suspended;
+
+        // auto suspend on expiration
+        if (u.expirationDate) {
+          const exp = new Date(u.expirationDate);
+          if (!isNaN(exp.getTime()) && exp < now) {
+            suspended = true;
+          }
+        }
+
+        // auto suspend on 60+ days inactivity
+        if (u.lastActive) {
+          const last = new Date(u.lastActive);
+          if (!isNaN(last.getTime())) {
+            const days = (now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24);
+            if (days > 60) suspended = true;
+          }
+        }
+
+        if (suspended !== !!u.suspended) {
+          await db.run("UPDATE users SET suspended = ? WHERE id = ?", [
+            suspended ? 1 : 0,
+            u.id,
+          ]);
+        }
+
+        return {
+          ...u,
+          verified: !!u.verified,
+          suspended,
+          documents: u.documents ? JSON.parse(u.documents) : {},
+        };
+      }),
+    );
+
+    res.json(updatedRows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.patch("/api/users/:id/verify", async (req, res) => {
-  const { verified } = req.body;
+  const { verified, expirationDate } = req.body;
+
+  if (verified && !expirationDate) {
+    return res.status(400).json({ error: "Expiration date is required for verification." });
+  }
+
+  const now = new Date().toISOString();
+  const suspended = verified ? false : true;
+
   try {
-    await db.run("UPDATE users SET verified = ? WHERE id = ?", [
-      verified ? 1 : 0,
-      req.params.id,
-    ]);
-    res.json({ success: true });
+    await db.run(
+      "UPDATE users SET verified = ?, expirationDate = ?, suspended = ?, lastActive = ? WHERE id = ?",
+      [
+        verified ? 1 : 0,
+        expirationDate || null,
+        suspended ? 1 : 0,
+        now,
+        req.params.id,
+      ],
+    );
+    const updated = await db.get("SELECT * FROM users WHERE id = ?", [req.params.id]);
+    res.json({
+      ...updated,
+      verified: !!updated.verified,
+      suspended: !!updated.suspended,
+      documents: updated.documents ? JSON.parse(updated.documents) : {},
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -351,13 +495,13 @@ app.patch("/api/users/:id/verify", async (req, res) => {
 
 app.patch("/api/users/:id", async (req, res) => {
   const updates: Record<string, any> = {};
-  const allowed = ["email", "phone", "pfp", "name"];
+  const allowed = ["email", "phone", "pfp", "name", "role"];
   for (const key of allowed) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
   }
 
   if (Object.keys(updates).length === 0) {
-    return res.status(400).json({ error: "No profile fields provided" });
+    return res.status(400).json({ error: "No valid fields provided" });
   }
 
   const setClause = Object.keys(updates)
@@ -387,6 +531,33 @@ app.post("/api/users/:id/pfp", upload.single("pfp"), async (req, res) => {
       req.params.id,
     ]);
     res.json({ pfp: fileUrl });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/users/:id/documents", upload.single("document"), async (req, res) => {
+  const file = (req as any).file;
+  const { key } = req.body;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+  if (!key) return res.status(400).json({ error: "Document key is required" });
+
+  const fileUrl = `/uploads/${file.filename}`;
+
+  try {
+    const user = await db.get("SELECT documents FROM users WHERE id = ?", [
+      req.params.id,
+    ]);
+
+    const docs = user?.documents ? JSON.parse(user.documents) : {};
+    docs[key] = fileUrl;
+
+    await db.run("UPDATE users SET documents = ? WHERE id = ?", [
+      JSON.stringify(docs),
+      req.params.id,
+    ]);
+
+    res.json({ documents: docs });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -437,8 +608,10 @@ app.get("/api/suppliers", async (req, res) => {
 
 app.post("/api/suppliers", async (req, res) => {
   const { id, name, active, joinedAt } = req.body;
-  try {
-    await db.run(
+  try {    const existing = await db.get("SELECT id FROM suppliers WHERE name = ?", [name]);
+    if (existing) {
+      return res.status(400).json({ error: "Supplier with this name already exists" });
+    }    await db.run(
       "INSERT INTO suppliers (id, name, active, joinedAt) VALUES (?, ?, ?, ?)",
       [id, name, active ? 1 : 0, joinedAt],
     );

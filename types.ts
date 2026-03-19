@@ -2,6 +2,8 @@ export type Role =
   | "user"
   | "supplier"
   | "supplier-admin"
+  | "admin"
+  | "logistics-super-admin"
   | "superadmin"
   | "delivery";
 
@@ -17,7 +19,10 @@ export interface User {
   registrationDate: string;
   supplierId?: string; // If role is supplier-admin
   businessName?: string;
-  documents?: Record<string, boolean>; // Simulated check for uploaded docs
+  documents?: Record<string, string>; // document key => URL
+  expirationDate?: string;
+  suspended?: boolean;
+  lastActive?: string;
 }
 
 export interface Category {

@@ -18,23 +18,26 @@ export const OrderDetails = () => {
     return dateStr ? new Date(dateStr) : null;
   }, [order]);
 
+  const isOwner = currentUser?.id === order?.userId;
+  const isAdminView = !isOwner;
+
   const canRefund = useMemo(() => {
-    if (!orderDate) return false;
+    if (!orderDate || !isOwner) return false;
     const days = Math.floor(
       (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24),
     );
     return (
       days < 15 && order.status !== "refunded" && order.status !== "disposed"
     );
-  }, [order, orderDate]);
+  }, [order, orderDate, isOwner]);
 
   const canDispose = useMemo(() => {
-    if (!orderDate) return false;
+    if (!orderDate || !isOwner) return false;
     const days = Math.floor(
       (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24),
     );
     return days >= 15 && order.status !== "disposed";
-  }, [order, orderDate]);
+  }, [order, orderDate, isOwner]);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);

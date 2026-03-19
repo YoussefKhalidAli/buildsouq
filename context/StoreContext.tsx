@@ -33,7 +33,7 @@ interface StoreContextType {
     email: string,
     role: Role,
     extras?: Partial<User>,
-  ) => Promise<void>;
+  ) => Promise<User>;
   logout: () => void;
 
   addCategory: (name: string) => Promise<void>;
@@ -42,7 +42,8 @@ interface StoreContextType {
   registerSupplier: (name: string) => Promise<Supplier>;
   toggleSupplierStatus: (id: string) => Promise<void>;
 
-  verifyUser: (userId: string, status: boolean) => Promise<void>;
+  verifyUser: (userId: string, status: boolean, expirationDate?: string) => Promise<void>;
+  uploadUserDocument: (userId: string, key: string, file: File) => Promise<string>;
 
   addProduct: (product: Omit<Product, "id">) => Promise<void>;
   updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
@@ -66,6 +67,7 @@ interface StoreContextType {
   updateUserProfile: (
     updates: Partial<Pick<User, "email" | "phone" | "pfp" | "name">>,
   ) => Promise<void>;
+  updateUserRole: (userId: string, role: Role) => Promise<void>;
   uploadUserProfilePicture: (file: File) => Promise<string>;
   getUserPayments: () => Order[];
 }
@@ -176,6 +178,7 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
       verified: false,
       registrationDate,
       supplierId,
+      suspended: true,
       ...extras,
     };
 
@@ -192,6 +195,7 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
 
     setUsers((prev) => [...prev, newUser]);
     setCurrentUser(newUser);
+    return newUser;
   };
 
   const logout = () => {
@@ -199,19 +203,45 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
     setCart([]);
   };
 
-  const verifyUser = async (userId: string, status: boolean) => {
+  const registerSupplier = async (name: string) => {
+    const id = uid();
+    const res = await fetch("/api/suppliers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name, active: true, joinedAt: new Date().toISOString() }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to register supplier");
+    }
+
+    const newSupplier = await res.json();
+    setSuppliers((prev) => [...prev, newSupplier]);
+    return newSupplier;
+  };
+
+  const verifyUser = async (
+    userId: string,
+    status: boolean,
+    expirationDate?: string,
+  ) => {
+    const payload: any = { verified: status };
+    if (status && expirationDate) payload.expirationDate = expirationDate;
+
     const res = await fetch(`/api/users/${userId}/verify`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ verified: status }),
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
+      const updated = await res.json();
       setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, verified: status } : u)),
+        prev.map((u) => (u.id === userId ? updated : u)),
       );
       if (currentUser?.id === userId) {
-        setCurrentUser((prev) => (prev ? { ...prev, verified: status } : null));
+        setCurrentUser(updated);
       }
     }
   };
@@ -241,23 +271,6 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
         prev.map((c) => (c.id === id ? { ...c, name } : c)),
       );
     }
-  };
-
-  const registerSupplier = async (name: string) => {
-    const id = uid();
-    const joinedAt = new Date().toISOString();
-    const newSupplier: Supplier = { id, name, active: true, joinedAt };
-
-    const res = await fetch("/api/suppliers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newSupplier),
-    });
-
-    if (!res.ok) throw new Error("Failed to register supplier");
-
-    setSuppliers((prev) => [...prev, newSupplier]);
-    return newSupplier;
   };
 
   const toggleSupplierStatus = async (id: string) => {
@@ -496,6 +509,28 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
     );
   };
 
+  const updateUserRole = async (userId: string, role: Role) => {
+    if (!currentUser || (currentUser.role !== 'superadmin' && currentUser.role !== 'admin')) {
+      throw new Error("Not authorized");
+    }
+
+    const res = await fetch(`/api/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to update user role");
+    }
+
+    const updatedUser = await res.json();
+    setUsers((prev) =>
+      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
+    );
+  };
+
   const uploadUserProfilePicture = async (file: File) => {
     if (!currentUser) throw new Error("Not authenticated");
 
@@ -519,6 +554,46 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
       prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
     );
     return data.pfp as string;
+  };
+
+  const uploadUserDocument = async (
+    userId: string,
+    key: string,
+    file: File,
+  ) => {
+    const form = new FormData();
+    form.append("document", file);
+    form.append("key", key);
+
+    const res = await fetch(`/api/users/${userId}/documents`, {
+      method: "POST",
+      body: form,
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to upload document");
+    }
+
+    const data = await res.json();
+    const updatedDocs = data.documents as Record<string, string>;
+
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              documents: updatedDocs,
+            }
+          : u,
+      ),
+    );
+
+    if (currentUser?.id === userId) {
+      setCurrentUser((prev) => (prev ? { ...prev, documents: updatedDocs } : null));
+    }
+
+    return updatedDocs[key];
   };
 
   const getUserPayments = () => {
@@ -559,7 +634,9 @@ export const StoreProvider = ({ children }: React.PropsWithChildren<{}>) => {
         refundOrder,
         disposeOrder,
         updateUserProfile,
+        updateUserRole,
         uploadUserProfilePicture,
+        uploadUserDocument,
         getUserPayments,
       }}
     >
